@@ -138,11 +138,14 @@ def main():
     # determine if GPU available:
     dpctl_available = False
     try:
+        # modern approach for SYCL context is to use dpctl & sklearnex._config supported in 
+        # Intel(R) Extension for Scikit-learn* 2021.4 
         import dpctl
         from sklearnex._config import config_context
         dpctl_available = True
     except ImportError:
         try:
+            # older approach for SYCL context is to use dall4py  
             from daal4py.oneapi import sycl_context
             print("*" * 80)
             print("\ndpctl package not found, switched to daal4py package\n")
@@ -151,24 +154,24 @@ def main():
             print("\nRequired packages not found, aborting...\n")
             exit()
 
-    devices = []
     gpu_available = False
-    if not dpctl_available:
+    if dpctl_available:
+        try:
+            with config_context(target_offload='gpu'):
+                gpu_available = True
+                def get_context(device):
+                    return config_context(target_offload=device)
+        except Exception:
+            gpu_available = False
+    else:
         try:
             with sycl_context('gpu'):
                 gpu_available = True
+                def get_context(device):
+                     return sycl_context(device)
         except Exception:
             gpu_available = False
-
-
-    def get_context(device):
-        if dpctl_available:
-            return config_context(target_offload=device)
-        return sycl_context(device)
-
-
-
-  
+        
     resultsDict = {}
     resultsDict = Read_Transform_Images(resultsDict)
     knee = 6
@@ -188,6 +191,7 @@ def main():
             km = k_means.fit(PCA_fit_transform)
     # It is possible to specify to make the computations on CPU
     else:
+        device_context = 'cpu'
         print('Running ComputePCA on local CPU: ')
         device_context = 'cpu'
         pca = PCA(n_components=n_components)
