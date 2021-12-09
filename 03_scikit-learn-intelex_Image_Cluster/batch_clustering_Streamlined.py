@@ -1,6 +1,5 @@
 # batch_clustering_Streamlined.py
 
-
 #===============================================================================
 # Copyright 2014-2021 Intel Corporation
 #
@@ -69,7 +68,7 @@ def ReshapeShortFat(original):
 def Read_Transform_Images(resultsDict, 
                          imagesFilenameList = [], 
                          FSWRITE = False): 
-    print('Running Read_Transform_Images on CPU: ')
+    #print('Running Read_Transform_Images on CPU: ')
     imageToClusterPath = 'data/'
     if len(imagesFilenameList) == 0:
         imagesFilenameList = [f for f in 
@@ -135,43 +134,17 @@ def read_results_json():
     return resultsDict
 
 def main():
-    # determine if GPU available:
-    dpctl_available = False
-    try:
-        # modern approach for SYCL context is to use dpctl & sklearnex._config supported in 
-        # Intel(R) Extension for Scikit-learn* 2021.4 
-        import dpctl
-        from sklearnex._config import config_context
-        dpctl_available = True
-    except ImportError:
-        try:
-            # older approach for SYCL context is to use dall4py  
-            from daal4py.oneapi import sycl_context
-            print("*" * 80)
-            print("\ndpctl package not found, switched to daal4py package\n")
-            print("*" * 80)
-        except ImportError:
-            print("\nRequired packages not found, aborting...\n")
-            exit()
+    from sklearnex import patch_sklearn
+    patch_sklearn()
+    from sklearn.cluster import KMeans
+    import dpctl
 
-    gpu_available = False
-    if dpctl_available:
-        try:
-            with config_context(target_offload='gpu'):
-                gpu_available = True
-                def get_context(device):
-                    return config_context(target_offload=device)
-        except Exception:
-            gpu_available = False
-    else:
-        try:
-            with sycl_context('gpu'):
-                gpu_available = True
-                def get_context(device):
-                     return sycl_context(device)
-        except Exception:
-            gpu_available = False
-        
+    for d in dpctl.get_devices():
+        if d.is_gpu:
+            device = dpctl.select_gpu_device()
+        else:
+            device = dpctl.select_cpu_device() 
+
     resultsDict = {}
     resultsDict = Read_Transform_Images(resultsDict)
     knee = 6
@@ -180,27 +153,16 @@ def main():
     n_samples = 3
     NP_images_STD = resultsDict['NP_images_STD'] # images as numpy array
     # It is possible to specify to make the computations on GPU
-    if gpu_available:
-        print('Running ComputePCA on GPU: ')   
-        device_context = 'gpu'
-        with  get_context('gpu'):           
-            pca = PCA(n_components=n_components)
-            PCA_fit_transform = pca.fit_transform(NP_images_STD) 
-            k_means = KMeans(n_clusters = knee, init='random')
-            db = DBSCAN(eps=EPS, min_samples = n_samples).fit(PCA_fit_transform)
-            km = k_means.fit(PCA_fit_transform)
-    # It is possible to specify to make the computations on CPU
-    else:
-        device_context = 'cpu'
-        print('Running ComputePCA on local CPU: ')
-        device_context = 'cpu'
+    print(device.device_type)
+    with dpctl.device_context(device):     
+        print(device.print_device_info())
         pca = PCA(n_components=n_components)
         PCA_fit_transform = pca.fit_transform(NP_images_STD) 
         k_means = KMeans(n_clusters = knee, init='random')
         db = DBSCAN(eps=EPS, min_samples = n_samples).fit(PCA_fit_transform)
-        km = k_means.fit(PCA_fit_transform) 
+        km = k_means.fit(PCA_fit_transform)
 
-    resultsDict['device_context'] = device_context
+    #resultsDict['device_context'] = device_context
     resultsDict['imageClusters_db'] = len(np.unique(db.labels_))
     resultsDict['counts_db'], resultsDict['bins_db']  = np.histogram(db.labels_, bins = EPS)
     resultsDict['counts'], resultsDict['bins'] =np.histogram(k_means.labels_, bins = knee)    
@@ -233,4 +195,3 @@ if __name__ == "__main__":
 
 # © Intel Corporation. Intel, the Intel logo, and other Intel marks are trademarks of Intel Corporation or its subsidiaries. 
 # *Other names and brands may be claimed as the property of others.
-

@@ -89,7 +89,8 @@ def Read_Transform_Images(resultsDict,
         a2 = a1  # no image whitening for each file
         list_np_Images.append(a2)
     NP_images = np.array(list_np_Images)
-    NP_images_STD = StandardScaler(with_std=True).fit_transform(NP_images.reshape(-1, 1))
+    #NP_images_STD = StandardScaler(with_std=True).fit_transform(NP_images.reshape(-1, 1))
+    NP_images_STD = StandardScaler(with_std=True).fit_transform(NP_images)
     resultsDict['imagesFilenameList'] = imagesFilenameList
     resultsDict['list_PIL_Images'] = list_PIL_Images
     resultsDict['NP_images_STD'] = NP_images_STD
