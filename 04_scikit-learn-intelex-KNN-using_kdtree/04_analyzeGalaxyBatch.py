@@ -3,16 +3,12 @@ warnings.filterwarnings("ignore", message="A column-vector y was passed when a 1
 
 from sklearnex import patch_sklearn, unpatch_sklearn
 patch_sklearn()
-
-#from sklearn import datasets
+import dpctl
 from sklearn import metrics
 from sklearn.neighbors import KNeighborsClassifier
-#from sklearn.svm import SVC
-#from sklearn.svm import NuSVC
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import time
-#from random import sample
 from sklearn.neighbors import KDTree
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import recall_score
@@ -57,48 +53,6 @@ trainGalaxy = np.vstack((GFFA['Stars'][GFFAIndex], XenoSupermanGalaxy['Stars'][X
 
 x_train, x_test, y_train, y_test = train_test_split(trainGalaxy, np.array(y), train_size=0.05)
 
-# determine if GPU available:
-gpu_available = False
-cpu_available = False
-dpctl_available = False
-try:
-    # modern approach for SYCL context is to use dpctl & sklearnex._config supported in 
-    # Intel(R) Extension for Scikit-learn* 2021.4 
-    import dpctl
-    from sklearnex._config import config_context
-    dpctl_available = True
-except ImportError:
-    try:
-        # older approach for SYCL context is to use dall4py  
-        from daal4py.oneapi import sycl_context
-        print("*" * 80)
-        print("\ndpctl package not found, switched to daal4py package\n")
-        print("*" * 80)
-    except ImportError:
-        print("\nRequired packages not found, aborting...\n")
-        exit()
-
-gpu_available = False
-if not dpctl_available:
-    try:
-        with sycl_context('gpu'):
-            gpu_available = True
-            def get_context(device):
-                 return sycl_context(device)
-    except Exception:
-        gpu_available = False
-else:
-    try:
-        with config_context(target_offload='gpu'):
-            gpu_available = True
-            def get_context(device):
-                return config_context(target_offload='gpu')
-    except Exception:
-        gpu_available = False
-print('dpctl_available: ', dpctl_available)               
-print('gpu_available: ', gpu_available)
-print('cpu_available: ', cpu_available)
-
 K = 3
 myModels = {'KNeighborsClassifier':KNeighborsClassifier(n_neighbors = K) , 
             'RandomForestClassifier': RandomForestClassifier(n_jobs=2, random_state=0), 
@@ -108,7 +62,13 @@ TrainingSize = [.001, .01, .05, .1, .8]
 bestScore = {}
 hi = 0
 K = 3
-       
+
+for d in dpctl.get_devices():
+    if d.is_gpu:
+        device = dpctl.select_gpu_device()
+    else:
+        device = dpctl.select_cpu_device() 
+            
 for tsz in TrainingSize:
     x_train, x_test, y_train, y_test = train_test_split( \
                 trainGalaxy, np.array(y), train_size=tsz)
@@ -118,15 +78,10 @@ for tsz in TrainingSize:
     for name, modelFunc in myModels.items():       
         start = time.time()
         model = modelFunc
-        if gpu_available:
-            with get_context('gpu'):
-                print('Running on gpu')
+        print(device.device_type)
+        with dpctl.device_context(device):
                 model.fit(x_train, y_train)
                 y_pred = model.predict(x_test)
-        else:
-            print('Running on login')
-            model.fit(x_train, y_train)
-            y_pred = model.predict(x_test) 
                 
         print('Display results of {} classification'.format(name))
         print('  K: ',K)

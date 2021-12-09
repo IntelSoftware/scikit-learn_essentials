@@ -24,7 +24,6 @@ import numpy as np
 import glob
 from PIL import Image
 from PIL.Image import Image as PilImage
-#from skimage.color import rgb2hsv
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -134,8 +133,6 @@ def read_results_json():
     return resultsDict
 
 def main():
-    from sklearnex import patch_sklearn
-    patch_sklearn()
     from sklearn.cluster import KMeans
     import dpctl
 
